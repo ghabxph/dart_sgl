@@ -26,7 +26,6 @@ class Principals implements Iterator {
   Iterator get iterator { iteratorIndex = -1; return this; }
 
   @override
-  // TODO: implement current
   Principal get current => _principals[iteratorIndex];
 
   @override
@@ -46,8 +45,8 @@ class Principal {
     // Look for given key
     for (var _key in _keys) if (_key.keyModifier.transformTo == key) return _key;
 
-    // Throw exception if key does not exist.
-    throw Exception('Given key does not exist.');
+    // Return null if key does not exist
+    return null;
   }
 }
 
@@ -97,6 +96,8 @@ class _Sgl {
 
   final Principals _qualifyingPrincipals = Principals();
 
+  final List<_Condition> _satisfiedConditions = <_Condition>[];
+
   Map _rule;
 
   Map get rule => _rule;
@@ -105,7 +106,6 @@ class _Sgl {
 
   _Sgl(Principals principals) { _principals = principals; }
 
-  /// TODO: Sgl.setRule
   _Sgl setRule(Map rule) {
 
     // Set SGL rule
@@ -115,7 +115,11 @@ class _Sgl {
     var iterator = _principals.iterator;
 
     // Look from principals and add qualifying principals on match
-    while (iterator.moveNext()) _Evaluator.init(this).evaluate( iterator.current);
+    while (iterator.moveNext()) {
+
+      // Qualify a principal if evaluation turns out to be true.
+      if (_Condition.init(iterator.current).evaluate(rule)) qualifyingPrincipals.add(iterator.current);
+    }
 
     // Return this instance
     return this;
@@ -125,100 +129,44 @@ class _Sgl {
   bool satisfies(List<Principal> principals) {}
 }
 
-abstract class _Evaluator implements Iterator {
+abstract class _Condition {
 
-  _Sgl _sgl;
+  Principal _principal;
 
-  static _Evaluator _firstEvaluator;
-
-  static _Evaluator _currentEvaluator;
-
-  _Evaluator _nextEvaluator;
-
-  String get evaluatorName;
-
-  Iterator get iterator { _Evaluator._currentEvaluator = null; return this; }
-
-  static _Evaluator init(_Sgl sgl) {
-
-    var nextEvaluator = _DefaultEvaluator();
-
-    nextEvaluator.setAsFirstEvaluator();
-
-    nextEvaluator.setSgl(sgl);
-
-    nextEvaluator.addToChain(_AnyEvaluator());
-
-    return nextEvaluator;
+  static _Condition init(Principal principal) {
+    var condition = _ConditionWithCustom();
+    condition._principal = principal;
+    return condition;
   }
 
-  void setAsFirstEvaluator() { _Evaluator._firstEvaluator = this; }
+  bool evaluate(Map rule);
+}
 
-  void setSgl(_Sgl sgl) { _sgl = sgl; }
-
-  _Evaluator addToChain(_Evaluator evaluator) { _nextEvaluator = evaluator; _nextEvaluator.setSgl(_sgl); return _nextEvaluator; }
-
-  void evaluate(Principal principal);
-
-  void next(Principal principal) { _nextEvaluator.evaluate(principal); }
-
-  _Evaluator findEvaluator(_Evaluator matchingEvaluator) {
-    var _iterator = iterator;
-
-    while (iterator.moveNext()) if (iterator.current.isTypeOf(matchingEvaluator)) return iterator.current;
-
-    throw Exception('Iterator ${matchingEvaluator.evaluatorName} does not exist.');
-  }
-
-  bool isTypeOf(_Evaluator matchingIterator) => evaluatorName == matchingIterator.evaluatorName;
+class _ConditionWithCustom extends _Condition {
 
   @override
-  // TODO: implement current
-  get current => throw UnimplementedError();
-
-  @override
-  bool moveNext() {
-
-    if (_Evaluator._currentEvaluator == null) {
-      _Evaluator._currentEvaluator = _Evaluator._firstEvaluator;
-    } else {
-      _Evaluator._currentEvaluator = _nextEvaluator;
-    }
-    // TODO: implement moveNext
-    throw UnimplementedError();
+  bool evaluate(Map rule) {
+    rule.forEach((key, value) {
+        var k = _principal.key(key);
+        if (key == 'any') return _ConditionWithAny().evaluate(rule);
+        else if (key == 'all') return _ConditionWithAll().evaluate(rule);
+        return k != null && (k.value == value || k.value.contains(value));
+    });
   }
 }
 
-class _DefaultEvaluator extends _Evaluator {
-
+class _ConditionWithAny extends _Condition {
   @override
-  // TODO: implement evaluatorName
-  String get evaluatorName => throw UnimplementedError();
-
-  @override
-  void evaluate(Principal principal) {
-    // TODO: implement evaluate
+  bool evaluate(Map rule) {
+    for (var _rule in rule['any']) if (_ConditionWithCustom().evaluate(_rule)) return true;
+    return false;
   }
 }
 
-class _AnyEvaluator extends _Evaluator {
-
+class _ConditionWithAll extends _Condition {
   @override
-  // TODO: implement current
-  get current => throw UnimplementedError();
-
-  @override
-  bool moveNext() {
-    // TODO: implement moveNext
-    throw UnimplementedError();
-  }
-
-  @override
-  // TODO: implement evaluatorName
-  String get evaluatorName => throw UnimplementedError();
-
-  @override
-  void evaluate(Principal principal) {
-    // TODO: implement evaluate
+  bool evaluate(Map rule) {
+    for (var _rule in rule['all']) if (!_ConditionWithCustom().evaluate(_rule)) return false;
+    return true;
   }
 }
